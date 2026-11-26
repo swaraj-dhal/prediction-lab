@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>NBA + NFL Prediction Lab</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--tx:#14171f;--mu:#667085;--bd:#e3e6ec;--good:#16a34a;--bad:#dc2626;--ac:#2563eb;--am:#d97706;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e1117;--card:#171b24;--tx:#e8ebf2;--mu:#98a2b3;--bd:#2a303c;--good:#4ade80;--bad:#f87171;--ac:#6b9bff;--am:#fbbf24;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0e1117;--card:#171b24;--tx:#e8ebf2;--mu:#98a2b3;--bd:#2a303c;--good:#4ade80;--bad:#f87171;--ac:#6b9bff;--am:#fbbf24;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:1040px;margin:0 auto;padding:18px 14px 40px}
+h1{font-size:24px;margin:0}h2{font-size:15px;margin:0 0 8px}.sub,.note{color:var(--mu)}.note{font-size:12px}
+.tabs{display:flex;gap:6px;margin:12px 0;flex-wrap:wrap}
+.tabs button{flex:1 1 90px;padding:9px;border:1px solid var(--bd);background:var(--card);color:var(--tx);border-radius:10px;font:inherit;font-weight:600;cursor:pointer}
+.tabs button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:12px}
+.tw{overflow-x:auto}table{border-collapse:collapse;width:100%;min-width:820px;font-size:13px}
+th,td{padding:6px;border-bottom:1px solid var(--bd);text-align:left;white-space:nowrap}th{color:var(--mu)}
+input,textarea,select{padding:6px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit;width:100%}
+td input{width:62px}td input.med{border-color:var(--am)}
+button.b{padding:7px 11px;border:0;border-radius:8px;background:var(--ac);color:#fff;font:inherit;cursor:pointer}button.g{background:var(--bd);color:var(--tx)}
+.banner{border:1px solid var(--am);color:var(--am);border-radius:10px;padding:8px 12px;font-size:13px;margin-bottom:12px}
+.pos{color:var(--good);font-weight:600}.neg{color:var(--bad)}.am{color:var(--am)}
+.fl{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap}.fl>*{flex:1 1 140px}
+.combo{border:1px solid var(--bd);border-radius:10px;padding:10px;margin-bottom:8px;display:flex;gap:6px 16px;flex-wrap:wrap;align-items:center}
+.combo b{flex:1 1 280px}.big{font-size:19px;font-weight:700}
+</style></head><body><main>
+<h1>NBA + NFL Prediction Lab</h1>
+<p class="sub" id="up">Loading…</p>
+<div class="banner" id="bn" style="display:none"></div>
+<div class="tabs"><button data-t="NFL">NFL</button><button data-t="NBA">NBA</button><button data-t="COMBO">Combos</button><button data-t="INJ">Injuries</button><button data-t="TRACK">Track record</button><button data-t="DATA">Data and model</button></div>
+<div id="v"></div>
+<script>window.__DATA__=/*DATA*/null;</script>
+<script>
+const $=id=>document.getElementById(id);
+const rng=a=>()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296};
+const gauss=r=>Math.sqrt(-2*Math.log(r()+1e-12))*Math.cos(2*Math.PI*r());
+const K={NBA:.07,NFL:.10},pc=x=>(x*100).toFixed(1)+"%";
+let DATA={NBA:[],NFL:[]},META={},tab="NFL",F={q:"",s:"ALL",n:60},LOG=[],LN={};
+const ls=(k,d)=>{try{return JSON.parse(localStorage.getItem(k)||d)}catch(e){return JSON.parse(d)}};
+const sv=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
+LOG=ls("pl_log","[]");LN=ls("pl_lines","{}");
+function load(rows){
+  DATA={NBA:[],NFL:[]};
+  rows.forEach(r=>{const e=Object.assign({role:0,inj:0,mu:0,home:1,lineSource:"you",status:"",when:"",lg:"NBA"},r),k=e.name+"|"+e.stat;
+    if(LN[k]!=null){e.line=LN[k];e.lineSource="you"}DATA[e.lg].push(e)});
+}
+function prep(e){
+  const n=e.log.length,avg=a=>a.reduce((x,y)=>x+y,0)/a.length;
+  const m5=avg(e.log.slice(-5)),m10=avg(e.log.slice(-10)),m20=avg(e.log.slice(-20));
+  const base=n>=20?.5*m5+.3*m10+.2*m20:n>=10?.6*m5+.4*m10:m5*.5+avg(e.log)*.5;
+  const all=avg(e.log)||1,mult=(1+e.role/100)*(1+e.inj/100)*(1+e.mu/100)*(e.home?1.02:.98);
+  const w=e.log.map((_,i)=>Math.pow(.5,(n-1-i)/6)),W=w.reduce((a,b)=>a+b,0);let c=0;
+  return{log:e.log,cdf:w.map(x=>c+=x/W),scale:base*mult/all,sd:.08*base*mult};
+}
+function sim(es,N,seed){
+  const r=rng(seed||42),P=es.map(prep),out=es.map(()=>new Float32Array(N));
+  for(let i=0;i<N;i++){const gf={};
+    es.forEach((e,j)=>{if(!(e.g in gf))gf[e.g]=gauss(r);const p=P[j],u=r();let k=0;while(k<p.cdf.length-1&&p.cdf[k]<u)k++;
+      out[j][i]=Math.max(0,Math.round(p.log[k]*p.scale*(1+K[e.lg]*gf[e.g])+gauss(r)*p.sd))})}
+  return out;
+}
+function calc(e){
+  const v=sim([e],20000)[0],N=v.length;let o=0,u=0;for(const x of v){if(x>e.line)o++;else if(x<e.line)u++}
+  const s=Float32Array.from(v).sort(),n=e.log.length,mean=e.log.reduce((a,b)=>a+b,0)/n;
+  const sd=Math.sqrt(e.log.reduce((a,b)=>a+(b-mean)**2,0)/n),cv=sd/(mean||1),over=o>=u;
+  return e.c={med:s[N>>1],mean:v.reduce((a,b)=>a+b,0)/N,pO:o/N,pU:u/N,over,p:(over?o:u)/N,conf:n<8?"Low":n<15||cv>.5?"Medium":"High"};
+}
+const ent=()=>[...DATA.NBA,...DATA.NFL];
+const hasLine=e=>e.lineSource!=="median";
+function show(){
+  const rows=ent().length,d=META.generated?new Date(META.generated):null;
+  $("up").textContent=rows?`${rows} player props loaded${d?" · data refreshed "+d.toLocaleString():""}`:"No data loaded yet";
+  const bad=Object.entries(META.sources||{}).filter(([k,v])=>/failed|skipped/.test(v));
+  $("bn").style.display=!rows||bad.length?"block":"none";
+  $("bn").innerHTML=!rows?"No data.json found. Run the daily update (see the Data tab) or import data.":bad.map(([k,v])=>`<b>${k}</b>: ${v}`).join("<br>").slice(0,600);
+  document.querySelectorAll(".tabs button").forEach(b=>b.classList.toggle("on",b.dataset.t==tab));
+  ({NFL:table,NBA:table,COMBO:combos,INJ:inj,TRACK:track,DATA:dataTab})[tab](tab);
+}
+function table(lg){
+  const all=DATA[lg],stats=[...new Set(all.map(e=>e.stat))];
+  const rows=all.map((e,i)=>[e,i]).filter(([e])=>(F.s=="ALL"||e.stat==F.s)&&(!F.q||(e.name+e.team+e.opp).toLowerCase().includes(F.q.toLowerCase())));
+  rows.sort((a,b)=>a[0].when<b[0].when?-1:a[0].when>b[0].when?1:a[0].team<b[0].team?-1:1);
+  if(!all.length){$("v").innerHTML=`<div class="card">No ${lg} rows in the data yet. ${lg=="NBA"?"The NBA step may have failed on the last run. Check the banner above.":""}</div>`;return}
+  $("v").innerHTML=`<div class="card"><h2>${lg} player projections</h2>
+  <div class="fl"><input id="fq" placeholder="Search player or team" value="${F.q}"><select id="fs"><option>ALL</option>${stats.map(s=>`<option ${s==F.s?"selected":""}>${s}</option>`).join("")}</select></div>
+  <div class="tw"><table><thead><tr><th>Player</th><th>Game</th><th>Stat</th><th>Line</th><th>Role %</th><th>Injury %</th><th>Matchup %</th><th>Median</th><th>Mean</th><th>Over</th><th>Under</th><th>Model pick</th><th>Confidence</th><th></th></tr></thead><tbody>
+  ${rows.slice(0,F.n).map(([e,i])=>`<tr><td>${e.name}${e.status?` <span class="am">(${e.status})</span>`:""}</td><td>${e.team} ${e.home?"vs":"at"} ${e.opp}<span class="note"> ${e.when.slice(5,10)}</span></td><td>${e.stat}</td>
+  ${["line","role","inj","mu"].map(k=>`<td><input type="number" step="0.5" data-i="${i}" data-k="${k}" class="${k=="line"&&!hasLine(e)?"med":""}" value="${e[k]}"></td>`).join("")}
+  <td id="m${i}"></td><td id="a${i}"></td><td id="o${i}"></td><td id="u${i}"></td><td id="p${i}"></td><td id="c${i}"></td><td><button class="b g" data-log="${i}">Log</button></td></tr>`).join("")}</tbody></table></div>
+  ${rows.length>F.n?`<p><button class="b g" id="more">Show more (${rows.length-F.n} left)</button></p>`:""}
+  <p class="note">Orange lines are placeholders (the median of recent games), not sportsbook lines. Type your book’s line and the model gives its pick. Projections use 20,000 simulated games built from the last 5, 10 and 20 games, with role, teammate-injury, matchup, script and home/away adjustments.</p></div>`;
+  let k=0;const todo=rows.slice(0,F.n).map(r=>r[1]);
+  (function step(){todo.slice(k,k+6).forEach(i=>fill(lg,i));k+=6;if(k<todo.length&&tab==lg)setTimeout(step,0)})();
+}
+function fill(lg,i){
+  const e=DATA[lg][i];if(!$("m"+i))return;const c=calc(e);
+  $("m"+i).textContent=c.med;$("a"+i).textContent=c.mean.toFixed(1);
+  const hl=hasLine(e);
+  $("o"+i).textContent=hl?pc(c.pO):"–";$("u"+i).textContent=hl?pc(c.pU):"–";
+  $("p"+i).innerHTML=hl?`<b class="${c.p>=.6?"pos":""}">${c.over?"Over":"Under"} ${pc(c.p)}</b>`:'<span class="note">enter line</span>';
+  $("c"+i).innerHTML=`<span class="${c.conf=="Low"?"neg":c.conf=="Medium"?"am":"pos"}">${c.conf}</span>`;
+}
+function combos(){
+  const pool=ent().filter(hasLine);
+  if(pool.length<2){$("v").innerHTML=`<div class="card"><h2>Combos</h2><p>Combos need real sportsbook lines, because a line set at the median makes every leg a coin flip. Add lines by typing them in the player tables, adding an Odds API key to the daily job, or putting them in lines.json. See the Data tab.</p></div>`;return}
+  const el=pool.map(e=>(calc(e),e)).filter(e=>e.c.conf!="Low"&&e.c.p>=.58).sort((a,b)=>b.c.p-a.c.p).slice(0,8),out=[];
+  const run=es=>{const s=sim(es,8000,7);let h=0;for(let i=0;i<8000;i++){let ok=1;for(let j=0;j<es.length;j++){const v=s[j][i];if(es[j].c.over?!(v>es[j].line):!(v<es[j].line)){ok=0;break}}h+=ok}
+    out.push({es,joint:h/8000,ind:es.reduce((x,e)=>x*e.c.p,1)})};
+  for(let i=0;i<el.length;i++)for(let j=i+1;j<el.length;j++){run([el[i],el[j]]);for(let k=j+1;k<el.length;k++)run([el[i],el[j],el[k]])}
+  out.sort((a,b)=>b.joint-a.joint);
+  $("v").innerHTML=`<div class="card"><h2>Best combos (correlated)</h2><p class="note">Legs need a 58%+ model chance and Medium or High confidence. Same-game players share a game-script factor, so “joint” differs from the naive “independent” product. Fair odds only, with no sportsbook vig.</p>
+  ${out.slice(0,12).map(o=>`<div class="combo"><b>${o.es.map(e=>`${e.name} ${e.c.over?"O":"U"} ${e.line} ${e.stat}`).join(" + ")}</b><span class="big ${o.joint>=.4?"pos":""}">${pc(o.joint)}</span><span class="note">independent ${pc(o.ind)}${Math.abs(o.joint-o.ind)>.01?` · correlation ${o.joint>o.ind?"helps":"hurts"} ${(Math.abs(o.joint-o.ind)*100).toFixed(1)} pts`:""}</span></div>`).join("")||'<p class="note">No legs clear the bar with the lines you have.</p>'}</div>`;
+}
+function inj(){
+  const m=new Map();ent().filter(e=>e.status).forEach(e=>m.set(e.name,[e.lg,e.team,e.status]));
+  const big=ent().filter(e=>e.inj>=3).map(e=>`${e.name} (${e.team}) ${e.stat} +${e.inj}%`);
+  $("v").innerHTML=`<div class="card"><h2>Injury flags</h2>${m.size?[...m].map(([n,[l,t,s]])=>`<p><b>${n}</b> (${l} ${t}): ${s}</p>`).join(""):'<p class="note">No listed players among the rows loaded.</p>'}
+  <h2 style="margin-top:12px">Teammate boosts applied</h2><p class="note">${big.length?big.slice(0,40).join(" · "):"None. No key rotation players were listed out."}</p>
+  <p class="note">Players listed Out or Doubtful are removed from the table. Their share of team volume is partly handed to teammates in the Injury % column. NFL injuries come from nflverse, NBA from ESPN’s public feed.</p></div>`;
+}
+function track(){
+  const d=LOG.filter(x=>x.res!=null),br=d.length?d.reduce((a,x)=>a+(x.p-x.res)**2,0)/d.length:0;
+  $("v").innerHTML=`<div class="card"><h2>Track record</h2><p>Logged ${LOG.length} · Settled ${d.length}${d.length?` · Hit rate ${pc(d.reduce((a,x)=>a+x.res,0)/d.length)} · Average model chance ${pc(d.reduce((a,x)=>a+x.p,0)/d.length)} · Brier ${br.toFixed(3)} <span class="note">(0.25 = coin flip, lower is better)</span>`:""}</p>
+  ${LOG.map((x,i)=>`<div class="combo"><b>${x.t}</b><span>${pc(x.p)}</span>${x.res==null?`<button class="b" data-r="${i},1">Hit</button><button class="b g" data-r="${i},0">Miss</button>`:`<span class="${x.res?"pos":"neg"}">${x.res?"Hit":"Miss"}</span>`}</div>`).join("")||'<p class="note">Press Log on a projection, then mark it Hit or Miss after the game. Saved in your browser.</p>'}</div>`;
+}
+function dataTab(){
+  $("v").innerHTML=`<div class="card"><h2>Data status</h2>${Object.entries(META.sources||{}).map(([k,v])=>`<p><b>${k}</b>: ${String(v).slice(0,200)}</p>`).join("")||"<p class='note'>No data loaded.</p>"}
+  <p class="note">Refreshed by a daily GitHub Action that runs build_data.py. NFL data is from nflverse. NBA data uses nba_api and ESPN. Sportsbook lines come from The Odds API if you add a key, or from lines.json.</p></div>
+  <div class="card"><h2>Import rows manually</h2><textarea id="it" rows="5" placeholder='[{"lg":"NBA","name":"Player","team":"HOU","opp":"PHX","home":1,"g":"n1","stat":"Points","line":24.5,"log":[22,30,25,19,28,24,31,26]}]'></textarea>
+  <p><button class="b" id="ii">Import</button> <span id="im" class="note"></span></p></div>
+  <div class="card"><h2>How the model works</h2><p class="note">Blends the last 5, 10 and 20 games, scales for role, teammate injuries, opponent allowed-per-game and game script (NFL spreads and totals), then simulates 20,000 games by resampling recent games (newer ones weigh more) plus noise. Confidence falls with few games or big swings. Combos add a shared game factor so same-game players move together. The Track tab checks how well-calibrated the picks are over time.</p></div>`;
+}
+let tm;
+document.addEventListener("input",e=>{
+  const t=e.target;
+  if(t.id=="fq"){F.q=t.value;clearTimeout(tm);tm=setTimeout(show,300);return}
+  if(t.dataset.k){const x=DATA[tab][t.dataset.i];x[t.dataset.k]=+t.value;
+    if(t.dataset.k=="line"){x.lineSource="you";LN[x.name+"|"+x.stat]=+t.value;sv("pl_lines",LN);t.classList.remove("med")}
+    clearTimeout(tm);tm=setTimeout(()=>fill(tab,+t.dataset.i),200)}
+});
+document.addEventListener("change",e=>{if(e.target.id=="fs"){F.s=e.target.value;F.n=60;show()}});
+document.addEventListener("click",e=>{
+  const t=e.target;
+  if(t.dataset.t){tab=t.dataset.t;F={q:"",s:"ALL",n:60};show()}
+  else if(t.id=="more"){F.n+=60;show()}
+  else if(t.dataset.log!=null){const x=DATA[tab][t.dataset.log];if(!x.c)calc(x);LOG.push({t:`${x.name} ${x.c.over?"over":"under"} ${x.line} ${x.stat}`,p:x.c.p,res:null});sv("pl_log",LOG);t.textContent="Logged"}
+  else if(t.dataset.r){const[i,v]=t.dataset.r.split(",");LOG[i].res=+v;sv("pl_log",LOG);track()}
+  else if(t.id=="ii"){try{const a=JSON.parse($("it").value);if(!Array.isArray(a))throw Error("Expected an array");a.forEach(x=>{if(!x.name||!x.stat||!Array.isArray(x.log)||x.log.length<3)throw Error("Each row needs name, stat and 3+ log values")});
+    load([...ent(),...a]);$("im").textContent="Imported "+a.length+" rows.";show()}catch(er){$("im").textContent="Could not import: "+er.message}}
+});
+(async()=>{
+  let d=window.__DATA__;
+  if(!d){try{d=await(await fetch("data.json?"+Date.now())).json()}catch(e){}}
+  if(d){META=d;load(d.rows||[])}
+  show();
+})();
+</script></main></body></html>
